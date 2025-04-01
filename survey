@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Experience Survey</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        label { display: block; margin: 10px 0 5px; }
+        input, textarea, select { width: 100%; max-width: 400px; padding: 5px; }
+        textarea { height: 100px; }
+        button { margin-top: 10px; padding: 10px 20px; }
+        .question-pair { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Job and Interview Experience Survey</h1>
+    <a href="search.html">Go to Search Page</a>
+    <form id="surveyForm">
+        <h2>Interview Experience</h2>
+        <label>Name: <input type="text" name="name" required></label>
+        <label>Major: <input type="text" name="major" required></label>
+        <label>Email: <input type="email" name="email" required></label>
+        <label>Company name: <input type="text" name="company_name" required></label>
+        <label>Industry: <input type="text" name="industry" required></label>
+        <label>Job title: <input type="text" name="job_title" required></label>
+        <label>Rating (1-5): <input type="number" min="1" max="5" name="rating" required></label>
+        <label>Your specific experience: <textarea name="specific_experience" required></textarea></label>
+        <label>Your opinion of the company: <textarea name="opinion_of_company" required></textarea></label>
+        <label>Remote / In person: 
+            <select name="remote_in_person" required>
+                <option value="remote">Remote</option>
+                <option value="in_person">In Person</option>
+                <option value="flex">Flex</option>
+            </select>
+        </label>
+        <label>Month and date: <input type="date" name="month_date" required></label>
+        <div id="interviewQuestions">
+            <h3>Interview Questions</h3>
+            <button type="button" id="addQuestion">Add Question</button>
+            <div id="questionsContainer"></div>
+        </div>
+        <label>How did you prepare: <textarea name="how_prepared" required></textarea></label>
+        <label>What type of interview was given: <input type="text" name="interview_type" required></label>
+        <label>What did you wish you prepared: <textarea name="wish_prepared" required></textarea></label>
+        <label>Did you get the job: 
+            <select name="got_job" required>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>
+        </label>
+
+        <h2>Job Experience (if applicable)</h2>
+        <label>Month date (job start): <input type="date" name="month_date_job"></label>
+        <label>Location: <input type="text" name="location"></label>
+        <label>Industry: <input type="text" name="industry_job"></label>
+        <label>Job title: <input type="text" name="job_title_job"></label>
+        <label>Rate the job (1-5): <input type="number" min="1" max="5" name="rate_job"></label>
+        <label>Describe day to day: <textarea name="day_to_day"></textarea></label>
+        <label>Overall experience: <textarea name="overall_experience"></textarea></label>
+        <label>Pay: <input type="text" name="pay"></label>
+        <label>Any additional information: <textarea name="additional_info"></textarea></label>
+        <label>Remote / In person: 
+            <select name="remote_in_person_job">
+                <option value="">N/A</option>
+                <option value="remote">Remote</option>
+                <option value="in_person">In Person</option>
+                <option value="flex">Flex</option>
+            </select>
+        </label>
+        <label>Career opportunities: <textarea name="career_opportunities"></textarea></label>
+        <label>Comp and benefits: <textarea name="comp_benefits"></textarea></label>
+        <label>Culture and values: <textarea name="culture_values"></textarea></label>
+        <label>Senior management: <textarea name="senior_management"></textarea></label>
+        <label>Work life balance: <textarea name="work_life_balance"></textarea></label>
+        <button type="submit">Submit</button>
+    </form>
+
+    <script>
+        // Replace with your Supabase credentials
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_KEY = 'YOUR_SUPABASE_KEY';
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let questionCount = 0;
+
+        document.getElementById('addQuestion').addEventListener('click', () => {
+            questionCount++;
+            const container = document.getElementById('questionsContainer');
+            const questionDiv = document.createElement('div');
+            questionDiv.className = 'question-pair';
+            questionDiv.innerHTML = `
+                <label>Question ${questionCount}: <input type="text" name="question_${questionCount}"></label>
+                <label>Answer ${questionCount}: <input type="text" name="answer_${questionCount}"></label>
+            `;
+            container.appendChild(questionDiv);
+        });
+
+        document.getElementById('surveyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            // Collect interview questions
+            const interviewQuestions = [];
+            for (let i = 1; i <= questionCount; i++) {
+                const question = data[`question_${i}`];
+                const answer = data[`answer_${i}`];
+                if (question && answer) {
+                    interviewQuestions.push({ question, answer });
+                }
+                delete data[`question_${i}`];
+                delete data[`answer_${i}`];
+            }
+            data.interview_questions = interviewQuestions;
+
+            // Convert got_job to boolean
+            data.got_job = data.got_job === 'yes';
+
+            // Insert data into Supabase
+            const { error } = await supabaseClient
+                .from('survey_responses')
+                .insert([data]);
+
+            if (error) {
+                console.error('Error submitting survey:', error.message);
+                alert('Error submitting survey: ' + error.message);
+            } else {
+                alert('Survey submitted successfully!');
+                e.target.reset();
+                document.getElementById('questionsContainer').innerHTML = '';
+                questionCount = 0;
+            }
+        });
+    </script>
+</body>
+</html>
