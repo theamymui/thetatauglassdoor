@@ -14,6 +14,7 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+// Reflects the columns in general_information
 type FormData = {
   name: string;
   major: string;
@@ -21,8 +22,8 @@ type FormData = {
   company_name: string;
   industry: string;
   job_title: string;
-  date: string; 
-  job: string;
+  date: string;       // stored as YYYY-MM-DD in the DB
+  got_job: boolean;   // boolean
 };
 
 export default function AddInterview() {
@@ -35,18 +36,24 @@ export default function AddInterview() {
     industry: '',
     job_title: '',
     date: '',
-    job: '',
+    got_job: false, // default to false
   });
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Handle form input changes
+  // Handle form input changes (text inputs)
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+
+    // For checkboxes, we need to use `checked` instead of `value`
+    if (type === 'checkbox') {
+      setFormData((prev) => ({ ...prev, [name]: checked }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   // Handle form submission
@@ -56,33 +63,47 @@ export default function AddInterview() {
     setSuccess(null);
 
     // Basic validation
+    const {
+      name,
+      major,
+      email,
+      company_name,
+      industry,
+      job_title,
+      date,
+      got_job,
+    } = formData;
+
     if (
-      !formData.name ||
-      !formData.major ||
-      !formData.email ||
-      !formData.company_name ||
-      !formData.industry ||
-      !formData.job_title ||
-      !formData.date ||
-      !formData.job
+      !name ||
+      !major ||
+      !email ||
+      !company_name ||
+      !industry ||
+      !job_title ||
+      !date
+      // got_job can be true or false (no "empty" concept needed)
     ) {
-      setError('Please fill out all fields.');
+      setError('Please fill out all required fields.');
       return;
     }
 
     try {
-      const { data, error: insertError } = await supabase.from('general_information').insert([
-        {
-          name: formData.name,
-          major: formData.major,
-          email: formData.email,
-          company_name: formData.company_name,
-          industry: formData.industry,
-          job_title: formData.job_title,
-          date: formData.date,
-          job: formData.job,
-        },
-      ]);
+      // Insert the form data into the Supabase 'general_information' table
+      const { data, error: insertError } = await supabase
+        .from('general_information')
+        .insert([
+          {
+            name,
+            major,
+            email,
+            company_name,
+            industry,
+            job_title,
+            date,
+            got_job,
+          },
+        ]);
 
       if (insertError) throw insertError;
 
@@ -95,7 +116,7 @@ export default function AddInterview() {
         industry: '',
         job_title: '',
         date: '',
-        job: '',
+        got_job: false,
       });
       setSuccess('General information submitted successfully!');
     } catch (err) {
@@ -107,7 +128,6 @@ export default function AddInterview() {
   return (
     <div
       className={`
-        /* Remove the grid & centering classes */
         flex
         flex-col
         min-h-screen
@@ -128,7 +148,7 @@ export default function AddInterview() {
           {/* Name Field */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Name
+              Name *
             </label>
             <input
               type="text"
@@ -147,7 +167,7 @@ export default function AddInterview() {
           {/* Major Field */}
           <div>
             <label htmlFor="major" className="block text-sm font-medium text-gray-700">
-              Major
+              Major *
             </label>
             <input
               type="text"
@@ -166,7 +186,7 @@ export default function AddInterview() {
           {/* Email Field */}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email
+              Email *
             </label>
             <input
               type="email"
@@ -185,7 +205,7 @@ export default function AddInterview() {
           {/* Company Name Field */}
           <div>
             <label htmlFor="company_name" className="block text-sm font-medium text-gray-700">
-              Company Name
+              Company Name *
             </label>
             <input
               type="text"
@@ -204,7 +224,7 @@ export default function AddInterview() {
           {/* Industry Field */}
           <div>
             <label htmlFor="industry" className="block text-sm font-medium text-gray-700">
-              Industry
+              Industry *
             </label>
             <input
               type="text"
@@ -223,7 +243,7 @@ export default function AddInterview() {
           {/* Job Title Field */}
           <div>
             <label htmlFor="job_title" className="block text-sm font-medium text-gray-700">
-              Job Title
+              Job Title *
             </label>
             <input
               type="text"
@@ -242,7 +262,7 @@ export default function AddInterview() {
           {/* Date Field */}
           <div>
             <label htmlFor="date" className="block text-sm font-medium text-gray-700">
-              Interview Date
+              Interview Date *
             </label>
             <input
               type="date"
@@ -257,23 +277,20 @@ export default function AddInterview() {
             />
           </div>
 
-          {/* Job Description Field */}
-          <div>
-            <label htmlFor="job" className="block text-sm font-medium text-gray-700">
-              Job Description
-            </label>
-            <textarea
-              id="job"
-              name="job"
-              value={formData.job}
+          {/* Got Job? (Boolean) */}
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="got_job"
+              name="got_job"
+              checked={formData.got_job}
               onChange={handleChange}
-              rows={4}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 
-                         rounded-md shadow-sm focus:outline-none 
-                         focus:ring-2 focus:ring-indigo-500 
-                         focus:border-indigo-500 sm:text-sm"
-              placeholder="e.g., Describe the role and responsibilities."
+              className="h-4 w-4 text-indigo-600 border-gray-300 
+                         rounded focus:ring-indigo-500"
             />
+            <label htmlFor="got_job" className="text-sm font-medium text-gray-700">
+              Got the job?
+            </label>
           </div>
 
           {/* Error/Success Messages */}
