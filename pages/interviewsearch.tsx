@@ -33,7 +33,7 @@ type OurAnswer = {
   gen_info_id: number;
   question_id: number;
   answer: string;
-  our_interview_question: OurQuestion; // Joined data
+  our_interview_question: OurQuestion | null; // Allow null for missing questions
 };
 
 type TheirQuestion = {
@@ -108,6 +108,16 @@ function InterviewAnswers() {
             throw ourAnswersError;
           }
 
+          // Transform the data to match the OurAnswer type, handle missing questions
+          const transformedOurAnswers: OurAnswer[] = (ourAnswersData || [])
+            .map((answer: any) => ({
+              gen_info_id: answer.gen_info_id,
+              question_id: answer.question_id,
+              answer: answer.answer,
+              our_interview_question: answer.our_interview_question?.[0] || null, // Handle missing question
+            }))
+            .filter((answer) => answer.our_interview_question !== null); // Filter out answers with missing questions
+
           // Fetch user-added questions from `their_interview_questions`
           const { data: theirQuestionsData, error: theirQuestionsError } = await supabase
             .from('their_interview_questions')
@@ -130,7 +140,7 @@ function InterviewAnswers() {
 
           return {
             general_info: info,
-            our_answers: ourAnswersData || [],
+            our_answers: transformedOurAnswers,
             their_questions: theirQuestionsData || [],
             their_answers: theirAnswersData || [],
           };
@@ -177,6 +187,14 @@ function InterviewAnswers() {
     setFilteredInterviews(filtered);
   }, [searchQuery, interviews]);
 
+  if (loading) {
+    return <p className="text-gray-500 text-center">Loading interview data...</p>;
+  }
+
+  if (error) {
+    return <p className="text-red-500 text-center">{error}</p>;
+  }
+
   return (
     <div>
       {/* Search Bar */}
@@ -193,11 +211,7 @@ function InterviewAnswers() {
       </div>
 
       {/* Interview Cards */}
-      {loading ? (
-        <p className="text-gray-500 text-center">Loading interview data...</p>
-      ) : error ? (
-        <p className="text-red-500 text-center">{error}</p>
-      ) : filteredInterviews.length === 0 ? (
+      {filteredInterviews.length === 0 ? (
         <p className="text-gray-500 text-center">
           {searchQuery ? 'No interviews match your search.' : 'No interviews found.'}
         </p>
@@ -235,7 +249,7 @@ function InterviewAnswers() {
                     {interview.our_answers.map((answer, idx) => (
                       <div key={answer.question_id} className="space-y-1">
                         <p className="font-medium text-gray-600">
-                          Q{idx + 1}: {answer.our_interview_question.question}
+                          Q{idx + 1}: {answer.our_interview_question?.question || 'Question not found'}
                         </p>
                         <p className="text-gray-500">{answer.answer}</p>
                       </div>
