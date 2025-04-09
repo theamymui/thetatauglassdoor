@@ -1,15 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { Geist, Geist_Mono } from 'next/font/google';
-import supabase from '../supabase'; // Adjust import if needed
+import { useState, useEffect } from 'react';
+import { Geist } from 'next/font/google';
+import supabase from '../supabase'; // Adjust import path as needed
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
   subsets: ['latin'],
 });
 
@@ -24,16 +20,29 @@ type GeneralInfo = {
   company_name: string;
   industry: string;
   job_title: string;
-  date: string;   // in YYYY-MM-DD format
+  date: string; // in YYYY-MM-DD format
   got_job: boolean; // boolean
 };
 
 /* --------------------------------------------------------------------------
-   2) Define the Q/A pairs shape
+   2) Define the shape of a fetched question from `our_interview_questions`
+-------------------------------------------------------------------------- */
+type FetchedQuestion = {
+  id: number;
+  question: string;
+};
 
-   Each Q/A pair has:
-   - question: for `their_interview_questions.questions`
-   - answer: for `their_interview_answers.their_answer`
+/* --------------------------------------------------------------------------
+   3) Define the shape of an answer for each fetched question
+-------------------------------------------------------------------------- */
+type Answer = {
+  questionId: number; // Maps to `our_interview_questions.id`
+  answer: string; // The user's answer
+};
+
+/* --------------------------------------------------------------------------
+   4) Define the Q/A pairs shape for user-added questions
+   (Matches `their_interview_questions` and `their_interview_answers`)
 -------------------------------------------------------------------------- */
 type QA = {
   question: string;
@@ -56,22 +65,60 @@ export default function AddInterview() {
   });
 
   /* -------------------------------------------------------
-     (B) State for Q/A Pairs
-     Start with one blank pair
+     (B) State for Fetched Questions and Answers
   ------------------------------------------------------- */
-  const [qaList, setQaList] = useState<QA[]>([
-    { question: '', answer: '' },
-  ]);
+  const [questions, setQuestions] = useState<FetchedQuestion[]>([]);
+  const [answers, setAnswers] = useState<Answer[]>([]);
 
   /* -------------------------------------------------------
-     (C) Error, Success, Loading
+     (C) State for User-Added Q/A Pairs
+  ------------------------------------------------------- */
+  const [qaList, setQaList] = useState<QA[]>([{ question: '', answer: '' }]);
+
+  /* -------------------------------------------------------
+     (D) Error, Success, Loading
   ------------------------------------------------------- */
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [fetchingQuestions, setFetchingQuestions] = useState<boolean>(true);
 
   /* -------------------------------------------------------
-     (D) Handle changes for General Info (text & checkbox)
+     (E) Fetch Questions from `our_interview_questions` on Mount
+  ------------------------------------------------------- */
+  useEffect(() => {
+    async function fetchQuestions() {
+      try {
+        setFetchingQuestions(true);
+        const { data, error } = await supabase
+          .from('our_interview_questions')
+          .select('id, question');
+
+        if (error) {
+          throw error;
+        }
+
+        if (data) {
+          setQuestions(data);
+          // Initialize answers state with empty answers for each question
+          setAnswers(data.map((q: FetchedQuestion) => ({
+            questionId: q.id,
+            answer: '',
+          })));
+        }
+      } catch (err) {
+        console.error('Error fetching questions:', err);
+        setError('Failed to load interview questions. Please try again.');
+      } finally {
+        setFetchingQuestions(false);
+      }
+    }
+
+    fetchQuestions();
+  }, []);
+
+  /* -------------------------------------------------------
+     (F) Handle changes for General Info (text & checkbox)
   ------------------------------------------------------- */
   function handleGeneralInfoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value, type, checked } = e.target;
@@ -83,7 +130,18 @@ export default function AddInterview() {
   }
 
   /* -------------------------------------------------------
-     (E) Handle changes for a Q/A pair (question or answer)
+     (G) Handle changes for Answers (for `our_interview_questions`)
+  ------------------------------------------------------- */
+  function handleAnswerChange(questionId: number, value: string) {
+    setAnswers((prev) =>
+      prev.map((answer) =>
+        answer.questionId === questionId ? { ...answer, answer: value } : answer
+      )
+    );
+  }
+
+  /* -------------------------------------------------------
+     (H) Handle changes for a user-added Q/A pair
   ------------------------------------------------------- */
   function handleQaChange(index: number, field: 'question' | 'answer', value: string) {
     setQaList((prev) => {
@@ -94,21 +152,21 @@ export default function AddInterview() {
   }
 
   /* -------------------------------------------------------
-     (F) Add a new Q/A pair
+     (I) Add a new Q/A pair
   ------------------------------------------------------- */
   function addQaPair() {
     setQaList((prev) => [...prev, { question: '', answer: '' }]);
   }
 
   /* -------------------------------------------------------
-     (G) Remove a Q/A pair
+     (J) Remove a Q/A pair
   ------------------------------------------------------- */
   function removeQaPair(index: number) {
     setQaList((prev) => prev.filter((_, i) => i !== index));
   }
 
   /* -------------------------------------------------------
-     (H) Submit everything in a single go
+     (K) Submit everything in a single go
   ------------------------------------------------------- */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,19 +175,19 @@ export default function AddInterview() {
     setLoading(true);
 
     // Basic validation for General Info
-    const {
-      name,
-      major,
-      email,
-      company_name,
-      industry,
-      job_title,
-      date,
-    } = generalInfo;
+    const { name, major, email, company_name, industry, job_title, date } = generalInfo;
 
     if (!name || !major || !email || !company_name || !industry || !job_title || !date) {
       setLoading(false);
       setError('Please fill out all required General Info fields.');
+      return;
+    }
+
+    // Validate that all `our_interview_questions` have answers
+    const unansweredQuestions = answers.filter((answer) => !answer.answer.trim());
+    if (unansweredQuestions.length > 0) {
+      setLoading(false);
+      setError('Please provide answers to all interview questions.');
       return;
     }
 
@@ -141,18 +199,40 @@ export default function AddInterview() {
         .from('general_information')
         .insert([generalInfo])
         .select('id')
-        .single(); // We want the new record's id
+        .single();
 
       if (genInfoError) {
         throw genInfoError;
       }
+
       const genInfoId = genInfoData?.id;
       if (!genInfoId) {
         throw new Error('No new gen_info_id returned from Supabase.');
       }
 
       // ---------------------------------------------------------------
-      // 2) For each Q/A, if question is filled in, insert Q, then A
+      // 2) Insert answers into `our_interview_answers` table
+      // ---------------------------------------------------------------
+      for (const answer of answers) {
+        const trimmedAnswer = answer.answer.trim();
+
+        const { error: answerError } = await supabase
+          .from('our_interview_answers')
+          .insert([
+            {
+              gen_info_id: genInfoId,
+              question_id: answer.questionId,
+              answer: trimmedAnswer,
+            },
+          ]);
+
+        if (answerError) {
+          throw answerError;
+        }
+      }
+
+      // ---------------------------------------------------------------
+      // 3) Insert user-added Q/A pairs into `their_interview_questions` and `their_interview_answers`
       // ---------------------------------------------------------------
       for (const qa of qaList) {
         const { question, answer } = qa;
@@ -162,7 +242,7 @@ export default function AddInterview() {
         // Skip if question is empty
         if (!trimmedQ) continue;
 
-        // a) Insert question
+        // a) Insert question into `their_interview_questions`
         const { data: questionData, error: qError } = await supabase
           .from('their_interview_questions')
           .insert([
@@ -183,7 +263,7 @@ export default function AddInterview() {
           throw new Error('No new question_id returned from Supabase.');
         }
 
-        // b) Insert answer if provided
+        // b) Insert answer into `their_interview_answers` if provided
         if (trimmedA) {
           const { error: aError } = await supabase
             .from('their_interview_answers')
@@ -202,9 +282,9 @@ export default function AddInterview() {
       }
 
       // If we reach here, everything was successful
-      setSuccess('Interview info and questions submitted successfully!');
+      setSuccess('Interview info and answers submitted successfully!');
 
-      // Optional: Reset form
+      // Reset form
       setGeneralInfo({
         name: '',
         major: '',
@@ -215,9 +295,10 @@ export default function AddInterview() {
         date: '',
         got_job: false,
       });
+      setAnswers(questions.map((q) => ({ questionId: q.id, answer: '' })));
       setQaList([{ question: '', answer: '' }]);
     } catch (err) {
-      console.error('Error inserting Q/A data:', err);
+      console.error('Error submitting data:', err);
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
@@ -400,7 +481,48 @@ export default function AddInterview() {
             </label>
           </div>
 
-          {/* ------------------ Q/A Section ------------------ */}
+          {/* ------------------ Our Interview Questions Section ------------------ */}
+          <h2 className="text-xl font-semibold text-gray-700">
+            Our Interview Questions
+          </h2>
+          <p className="text-sm text-gray-500">
+            Please answer the following questions about your interview experience.
+          </p>
+
+          {/* Loading state for fetching questions */}
+          {fetchingQuestions ? (
+            <p className="text-gray-500 text-center">Loading questions...</p>
+          ) : questions.length === 0 ? (
+            <p className="text-gray-500 text-center">No questions available.</p>
+          ) : (
+            questions.map((q, index) => (
+              <div key={q.id} className="space-y-3">
+                {/* Question (display only, not editable) */}
+                <div>
+                  <label
+                    htmlFor={`answer-${q.id}`}
+                    className="block text-sm font-medium text-gray-700"
+                  >
+                    Question {index + 1}: {q.question} *
+                  </label>
+                  <textarea
+                    id={`answer-${q.id}`}
+                    value={answers.find((a) => a.questionId === q.id)?.answer || ''}
+                    onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                    rows={3}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 
+                               rounded-md shadow-sm focus:outline-none 
+                               focus:ring-2 focus:ring-indigo-500 
+                               focus:border-indigo-500 sm:text-sm"
+                    placeholder="Enter your answer here..."
+                    required
+                  />
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* ------------------ User-Added Q/A Section ------------------ */}
           <h2 className="text-xl font-semibold text-gray-700">
             Interview Questions (optional)
           </h2>
@@ -487,14 +609,14 @@ export default function AddInterview() {
           <div className="text-center">
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || fetchingQuestions}
               className={`inline-flex justify-center py-2 px-4 border 
                           border-transparent shadow-sm text-sm font-medium 
                           rounded-md text-white bg-[#8b0000] 
                           hover:bg-[#a30000] focus:outline-none 
                           focus:ring-2 focus:ring-offset-2 
                           focus:ring-[#8b0000]
-                          ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          ${loading || fetchingQuestions ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {loading ? 'Submitting...' : 'Submit All'}
             </button>
