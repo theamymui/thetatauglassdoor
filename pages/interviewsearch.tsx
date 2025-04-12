@@ -14,6 +14,7 @@ const geistSans = Geist({
 -------------------------------------------------------------------------- */
 type GeneralInfo = {
   id: number;
+  created_at: string;
   name: string;
   major: string;
   email: string;
@@ -26,6 +27,7 @@ type GeneralInfo = {
 
 type OurQuestion = {
   id: number;
+  created_at: string;
   question: string;
 };
 
@@ -77,7 +79,7 @@ function InterviewAnswers() {
           .select('*');
 
         if (generalInfoError) {
-          throw generalInfoError;
+          throw new Error(`Failed to fetch general information: ${generalInfoError.message}`);
         }
 
         if (!generalInfoData || generalInfoData.length === 0) {
@@ -90,22 +92,23 @@ function InterviewAnswers() {
         const interviewDataPromises = generalInfoData.map(async (info: GeneralInfo) => {
           const genInfoId = info.id;
 
-          // Fetch answers to `our_interview_questions`
+          // Fetch answers to `our_interview_questions` with related question data
           const { data: ourAnswersData, error: ourAnswersError } = await supabase
             .from('our_interview_answers')
             .select(`
               gen_info_id,
               question_id,
               answer,
-              our_interview_question:question_id (
+              our_interview_questions:question_id (
                 id,
+                created_at,
                 question
               )
             `)
             .eq('gen_info_id', genInfoId);
 
           if (ourAnswersError) {
-            throw ourAnswersError;
+            throw new Error(`Failed to fetch our interview answers: ${ourAnswersError.message}`);
           }
 
           // Transform the data to match the OurAnswer type, handle missing questions
@@ -114,7 +117,7 @@ function InterviewAnswers() {
               gen_info_id: answer.gen_info_id,
               question_id: answer.question_id,
               answer: answer.answer,
-              our_interview_question: answer.our_interview_question?.[0] || null, // Handle missing question
+              our_interview_question: answer.our_interview_questions || null, // Use the correct key
             }))
             .filter((answer) => answer.our_interview_question !== null); // Filter out answers with missing questions
 
@@ -125,7 +128,7 @@ function InterviewAnswers() {
             .eq('gen_info_id', genInfoId);
 
           if (theirQuestionsError) {
-            throw theirQuestionsError;
+            throw new Error(`Failed to fetch their interview questions: ${theirQuestionsError.message}`);
           }
 
           // Fetch answers to user-added questions from `their_interview_answers`
@@ -135,7 +138,7 @@ function InterviewAnswers() {
             .eq('gen_info_id', genInfoId);
 
           if (theirAnswersError) {
-            throw theirAnswersError;
+            throw new Error(`Failed to fetch their interview answers: ${theirAnswersError.message}`);
           }
 
           return {
@@ -153,9 +156,9 @@ function InterviewAnswers() {
         );
         setInterviews(sortedInterviews);
         setFilteredInterviews(sortedInterviews);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error fetching interview data:', err);
-        setError('Failed to load interview data. Please try again.');
+        setError(err.message || 'Failed to load interview data. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -247,11 +250,11 @@ function InterviewAnswers() {
                   <h3 className="text-lg font-medium text-gray-700 mb-2">Our Interview Questions</h3>
                   <div className="space-y-4">
                     {interview.our_answers.map((answer, idx) => (
-                      <div key={answer.question_id} className="space-y-1">
+                      <div key={`${answer.question_id}-${idx}`} className="space-y-1">
                         <p className="font-medium text-gray-600">
                           Q{idx + 1}: {answer.our_interview_question?.question || 'Question not found'}
                         </p>
-                        <p className="text-gray-500">{answer.answer}</p>
+                        <p className="text-gray-500">{answer.answer || 'No answer provided'}</p>
                       </div>
                     ))}
                   </div>
@@ -260,7 +263,7 @@ function InterviewAnswers() {
 
               {/* Their Interview Questions and Answers */}
               {interview.their_questions.length > 0 && (
-                <div>
+                <div className="mb-6">
                   <h3 className="text-lg font-medium text-gray-700 mb-2">Their Interview Questions</h3>
                   <div className="space-y-4">
                     {interview.their_questions.map((question, idx) => {
@@ -268,9 +271,9 @@ function InterviewAnswers() {
                         (answer) => answer.their_question_id === question.their_question_id
                       );
                       return (
-                        <div key={question.their_question_id} className="space-y-1">
+                        <div key={`${question.their_question_id}-${idx}`} className="space-y-1">
                           <p className="font-medium text-gray-600">
-                            Q{idx + 1}: {question.questions}
+                            Q{idx + 1}: {question.questions || 'Question not found'}
                           </p>
                           {relatedAnswer ? (
                             <p className="text-gray-500">{relatedAnswer.their_answer}</p>
